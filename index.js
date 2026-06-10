@@ -32,6 +32,7 @@ const client = new Client({
 
 const activeDispatch = new Map(); // chefId => channelId
 const botVoiceChannels = new Set();
+const dispatchInfo = new Map(); // channelId => { plaque, createdAt, members: Set<string> }
 
 /* ================= DISPATCH ================= */
 
@@ -45,8 +46,8 @@ const DISPATCH_LIMITS = {
 
 /* ================= LOG ================= */
 
-function getTimestamp() {
-  return new Date().toLocaleTimeString("fr-FR", {
+function getTimestamp(date = new Date()) {
+  return date.toLocaleTimeString("fr-FR", {
     timeZone: "Europe/Paris",
     hour: "2-digit",
     minute: "2-digit",
@@ -167,6 +168,12 @@ async function evolveDispatch(guild, oldCh, next) {
 
   botVoiceChannels.add(newCh.id);
 
+  const info = dispatchInfo.get(oldCh.id);
+  if (info) {
+    dispatchInfo.set(newCh.id, info);
+    dispatchInfo.delete(oldCh.id);
+  }
+
   for (const m of oldCh.members.values()) {
     await m.voice.setChannel(newCh).catch(() => {});
   }
@@ -240,6 +247,7 @@ client.on("interactionCreate", async interaction => {
 
       botVoiceChannels.add(ch.id);
       activeDispatch.set(interaction.user.id, ch.id);
+      dispatchInfo.set(ch.id, { plaque, createdAt: Date.now(), members: new Set() });
 
       await interaction.member.voice.setChannel(ch).catch(() => {});
 
@@ -423,10 +431,28 @@ Plaque : ${plaque}`
 
 /* ================= AUTO DELETE ================= */
 
-client.on("voiceStateUpdate", async oldState => {
+client.on("voiceStateUpdate", async (oldState, newState) => {
+  /* ===== SUIVI DES PERSONNES PRÉSENTES ===== */
+  if (newState.channel && botVoiceChannels.has(newState.channel.id)) {
+    const info = dispatchInfo.get(newState.channel.id);
+    if (info) info.members.add(newState.member.displayName);
+  }
+
   const ch = oldState.channel;
   if (ch && botVoiceChannels.has(ch.id) && ch.members.size === 0) {
-    await sendLog(ch.guild, `🗑️ DISPATCH SUPPRIMÉ • ${ch.name}`);
+    const info = dispatchInfo.get(ch.id);
+    if (info) {
+      await sendLog(ch.guild,
+        `🗑️ DISPATCH TERMINÉ • ${ch.name}
+Personnes présentes : ${[...info.members].join(", ") || "Aucune"}
+Plaque : ${info.plaque}
+Début : ${getTimestamp(new Date(info.createdAt))}
+Fin : ${getTimestamp()}`
+      );
+      dispatchInfo.delete(ch.id);
+    } else {
+      await sendLog(ch.guild, `🗑️ DISPATCH SUPPRIMÉ • ${ch.name}`);
+    }
     botVoiceChannels.delete(ch.id);
     await ch.delete().catch(() => {});
   }
