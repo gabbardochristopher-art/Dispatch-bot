@@ -141,6 +141,11 @@ function getNextDispatch(cur) {
   return DISPATCH_ORDER[i + 1] || null;
 }
 
+function getPrevDispatch(cur) {
+  const i = DISPATCH_ORDER.indexOf(cur);
+  return i > 0 ? DISPATCH_ORDER[i - 1] : null;
+}
+
 function findMemberByPartialName(guild, search) {
   search = search.toLowerCase();
   const matches = guild.members.cache.filter(m =>
@@ -371,7 +376,7 @@ Plaque : ${plaque}`
     if (interaction.isModalSubmit() && interaction.customId === "remove_member_modal") {
       await interaction.deferReply({ flags: 64 });
 
-      const ch = interaction.guild.channels.cache.get(activeDispatch.get(interaction.user.id));
+      let ch = interaction.guild.channels.cache.get(activeDispatch.get(interaction.user.id));
       if (!ch) return interaction.editReply("❌ Dispatch introuvable");
 
       const names = interaction.fields.getTextInputValue("member")
@@ -392,6 +397,15 @@ Plaque : ${plaque}`
 
         const member = matches.first();
         await member.voice.setChannel(WAITING_VOICE_CHANNEL_ID).catch(() => {});
+
+        let current = getCurrentDispatch(ch.name);
+        let prev = getPrevDispatch(current);
+        while (prev && ch.members.size > 0 && ch.members.size <= DISPATCH_LIMITS[prev]) {
+          ch = await evolveDispatch(interaction.guild, ch, prev);
+          activeDispatch.set(interaction.user.id, ch.id);
+          current = prev;
+          prev = getPrevDispatch(current);
+        }
         removed.push(member.displayName);
       }
 
