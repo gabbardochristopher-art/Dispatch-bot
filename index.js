@@ -270,14 +270,6 @@ client.on("interactionCreate", async interaction => {
         }
       }
 
-      await sendLog(interaction.guild,
-        `🚓 DISPATCH CRÉÉ
-Chef : ${interaction.member.displayName}
-Type : ${type}
-Matricule : ${matricule}
-Plaque : ${plaque}`
-      );
-
       return interaction.editReply("✅ Dispatch créé");
     }
 
@@ -449,8 +441,6 @@ Début : ${getTimestamp(new Date(info.createdAt))}
 Fin : ${getTimestamp()}`
       );
       dispatchInfo.delete(ch.id);
-    } else {
-      await sendLog(ch.guild, `🗑️ DISPATCH SUPPRIMÉ • ${ch.name}`);
     }
     botVoiceChannels.delete(ch.id);
     await ch.delete().catch(() => {});
