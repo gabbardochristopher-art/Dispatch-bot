@@ -99,8 +99,7 @@ client.once("clientReady", async () => {
   await channel.send({ components: [title("🛡️ DISPATCHS UNITÉS")] });
   await channel.send({
     components: [
-      row(ButtonStyle.Primary, ["qrf","sahp","echo","doa","k9"]),
-      row(ButtonStyle.Primary, ["sru"])
+      row(ButtonStyle.Primary, ["swat","cid"])
     ]
   });
 
