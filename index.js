@@ -9,10 +9,16 @@ const {
   TextInputBuilder,
   TextInputStyle
 } = require("discord.js");
-
 require("dotenv").config();
 
-/* ------------ CLIENT ------------ */
+/* ================= CONFIG ================= */
+
+const CATEGORY_ID = "1514197100064407583";
+const TEXT_CHANNEL_ID = "1514196466820845748";
+const LOG_CHANNEL_ID = "1514193783573577858";
+const WAITING_VOICE_CHANNEL_ID = "1514198634982408192";
+
+/* ========================================= */
 
 const client = new Client({
   intents: [
@@ -22,243 +28,320 @@ const client = new Client({
   ]
 });
 
-/* ------------ CONFIG ------------ */
+/* ================= STATE ================= */
 
-const CATEGORY_ID = "1452091744807157980";
-const TEXT_CHANNEL_ID = "1452092865126862961";
+const activeDispatch = new Map(); // chefId => channelId
+const botVoiceChannels = new Set();
 
-const createdVoiceChannels = new Map();
+/* ================= DISPATCH ================= */
 
-/* ------------ READY ------------ */
+const DISPATCH_ORDER = ["LINCOLN", "ADAM", "TANGO", "DELTA"];
+const DISPATCH_LIMITS = {
+  LINCOLN: 1,
+  ADAM: 2,
+  TANGO: 3,
+  DELTA: 4
+};
 
-client.once("ready", async () => {
-  console.log(`✅ Bot connecté : ${client.user.tag}`);
+/* ================= LOG ================= */
+
+function getTimestamp() {
+  return new Date().toLocaleTimeString("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+async function sendLog(guild, msg) {
+  const ch = guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (ch) ch.send({ content: `🕒 ${getTimestamp()}\n${msg}` }).catch(() => {});
+}
+
+/* ================= READY ================= */
+
+client.once("clientReady", async () => {
+  console.log("✅ Bot prêt");
 
   const channel = await client.channels.fetch(TEXT_CHANNEL_ID);
+  await channel.bulkDelete(50).catch(() => {});
 
-  /* ===== TITRES ===== */
+  const title = txt =>
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`title_${txt}`)
+        .setLabel(txt)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+    );
 
-  const titlePatrol = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("title_patrol")
-      .setLabel("🚓 DISPATCHS PATROUILLE")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
-  );
+  const row = (style, ids) =>
+    new ActionRowBuilder().addComponents(
+      ids.map(id =>
+        new ButtonBuilder()
+          .setCustomId(`dispatch_${id}`)
+          .setLabel(id.toUpperCase())
+          .setStyle(style)
+      )
+    );
 
-  const titleUnits = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("title_units")
-      .setLabel("🛡️ DISPATCHS D’UNITÉS")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
-  );
+  /* 🚓 PATROUILLES */
+  await channel.send({ components: [title("🚓 DISPATCHS PATROUILLE")] });
+  await channel.send({
+    components: [
+      row(ButtonStyle.Success, ["lincoln","adam","tango","delta"]),
+      row(ButtonStyle.Success, ["mary","victor","henry","baro"])
+    ]
+  });
 
-  const titleSpecial = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("title_special")
-      .setLabel("🎯 DISPATCHS SPÉCIFIQUES")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
-  );
+  /* 🛡️ UNITÉS */
+  await channel.send({ components: [title("🛡️ DISPATCHS UNITÉS")] });
+  await channel.send({
+    components: [
+      row(ButtonStyle.Primary, ["qrf","sahp","echo","doa","k9"]),
+      row(ButtonStyle.Primary, ["sru"])
+    ]
+  });
 
-  /* ===== PATROUILLE ===== */
+  /* 🎯 SPÉCIFIQUES */
+  await channel.send({ components: [title("🎯 DISPATCHS SPÉCIFIQUES")] });
+  await channel.send({
+    components: [
+      row(ButtonStyle.Secondary, ["banalise","mainhall","bureau"]),
+      row(ButtonStyle.Secondary, ["formation","recrutement","operation"])
+    ]
+  });
 
-  const patrolRow1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("lincoln").setLabel("Lincoln").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("adam").setLabel("Adam").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("tango").setLabel("Tango").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("delta").setLabel("Delta").setStyle(ButtonStyle.Success)
-  );
-
-  const patrolRow2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("mary").setLabel("Mary").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("victor").setLabel("Victor").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("henry").setLabel("Henry").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("baro").setLabel("Baro").setStyle(ButtonStyle.Success)
-  );
-
-  /* ===== UNITÉS ===== */
-
-  const unitRow1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("qrf").setLabel("QRF").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("sahp").setLabel("SAHP").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("echo").setLabel("ECHO").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("doa").setLabel("DOA").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("k9").setLabel("K9").setStyle(ButtonStyle.Primary)
-  );
-
-  const unitRow2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("sru").setLabel("SRU").setStyle(ButtonStyle.Primary)
-  );
-
-  /* ===== SPÉCIFIQUES ===== */
-
-  const specialRow1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("banalise").setLabel("Banalisé").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("mainhall").setLabel("Mainhall").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("bureau").setLabel("Bureau").setStyle(ButtonStyle.Secondary)
-  );
-
-  const specialRow2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("formation").setLabel("Formation").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("recrutement").setLabel("Recrutement").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("operation").setLabel("Opération").setStyle(ButtonStyle.Secondary)
-  );
-
-  /* ===== ENVOI ===== */
-
-  await channel.send({ components: [titlePatrol] });
-  await channel.send({ components: [patrolRow1, patrolRow2] });
-
-  await channel.send({ components: [titleUnits] });
-  await channel.send({ components: [unitRow1, unitRow2] });
-
-  await channel.send({ components: [titleSpecial] });
-  await channel.send({ components: [specialRow1, specialRow2] });
+  /* 🟥 GESTION */
+  await channel.send({ components: [title("🟥 GESTION DU DISPATCH")] });
+  await channel.send({
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("add_member")
+          .setLabel("➕ Ajouter un membre")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId("remove_member")
+          .setLabel("➖ Retirer un membre")
+          .setStyle(ButtonStyle.Danger)
+      )
+    ]
+  });
 });
 
-/* ------------ INTERACTIONS ------------ */
+/* ================= UTILS ================= */
+
+function getCurrentDispatch(name) {
+  return DISPATCH_ORDER.find(d => name.includes(d));
+}
+
+function getNextDispatch(cur) {
+  const i = DISPATCH_ORDER.indexOf(cur);
+  return DISPATCH_ORDER[i + 1] || null;
+}
+
+function findMemberByPartialName(guild, search) {
+  search = search.toLowerCase();
+  const matches = guild.members.cache.filter(m =>
+    m.displayName.toLowerCase().includes(search)
+  );
+  return matches.size === 1 ? matches.first() : null;
+}
+
+async function evolveDispatch(guild, oldCh, next) {
+  const limit = DISPATCH_LIMITS[next];
+  const base = oldCh.name.split("|").slice(1,3).map(x => x.trim()).join(" | ");
+
+  const newCh = await guild.channels.create({
+    name: `🚓 ${next} | ${base} | ${oldCh.members.size}/${limit}`,
+    type: ChannelType.GuildVoice,
+    parent: CATEGORY_ID,
+    userLimit: limit
+  });
+
+  botVoiceChannels.add(newCh.id);
+
+  for (const m of oldCh.members.values()) {
+    await m.voice.setChannel(newCh).catch(() => {});
+  }
+
+  botVoiceChannels.delete(oldCh.id);
+  await oldCh.delete().catch(() => {});
+  return newCh;
+}
+
+/* ================= INTERACTIONS ================= */
 
 client.on("interactionCreate", async interaction => {
   try {
 
-    /* ----- BOUTONS ----- */
-    if (interaction.isButton()) {
-
-      if (!interaction.member.voice || !interaction.member.voice.channel) {
+    /* ===== OUVERTURE MODAL CRÉATION ===== */
+    if (interaction.isButton() && interaction.customId.startsWith("dispatch_")) {
+      if (interaction.member.voice?.channelId !== WAITING_VOICE_CHANNEL_ID) {
         return interaction.reply({
-          content: "❌ Tu dois être dans un salon vocal.",
-          ephemeral: true
+          content: "❌ Tu dois être dans le salon vocal d'attente pour créer un dispatch.",
+          flags: 64
         });
       }
 
-      const dispatchName = interaction.customId.toUpperCase();
-
-      const modal = new ModalBuilder()
-        .setCustomId(`dispatch_modal_${dispatchName}`)
-        .setTitle(`Créer dispatch — ${dispatchName}`);
-
-      const matricule = new TextInputBuilder()
-        .setCustomId("matricule")
-        .setLabel("Matricule")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      const plaque = new TextInputBuilder()
-        .setCustomId("plaque")
-        .setLabel("Plaque")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      // ✅ LABEL CORRIGÉ + PLACEHOLDER
-      const membres = new TextInputBuilder()
-        .setCustomId("membres")
-        .setLabel("Membres à ajouter")
-        .setPlaceholder("Pseudo serveur, ID ou mention\n1 par ligne")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(false);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(matricule),
-        new ActionRowBuilder().addComponents(plaque),
-        new ActionRowBuilder().addComponents(membres)
+      return interaction.showModal(
+        new ModalBuilder()
+          .setCustomId(interaction.customId)
+          .setTitle("Créer un dispatch")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("matricule")
+                .setLabel("Matricule")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("plaque")
+                .setLabel("Plaque")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("members")
+                .setLabel("Membres (optionnel)")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false)
+            )
+          )
       );
-
-      return interaction.showModal(modal);
     }
 
-    /* ----- MODAL ----- */
-    if (interaction.isModalSubmit()) {
+    /* ===== CRÉATION DISPATCH (CORRIGÉ) ===== */
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("dispatch_")) {
+      await interaction.deferReply({ flags: 64 });
 
-      if (!interaction.customId.startsWith("dispatch_modal_")) return;
+      let type = interaction.customId.replace("dispatch_","").toUpperCase();
+      let limit = DISPATCH_LIMITS[type];
 
-      const dispatchName = interaction.customId.replace("dispatch_modal_", "");
       const matricule = interaction.fields.getTextInputValue("matricule");
       const plaque = interaction.fields.getTextInputValue("plaque");
+      const membersRaw = interaction.fields.getTextInputValue("members") || "";
 
-      const membresRaw = interaction.fields
-        .getTextInputValue("membres")
-        ?.split("\n")
-        .map(v => v.trim())
-        .filter(Boolean) || [];
-
-      await interaction.guild.members.fetch();
-
-      const voiceChannel = await interaction.guild.channels.create({
-        name: `🚓 ${dispatchName} - ${matricule}${plaque ? ` - ${plaque}` : ""}`,
+      let ch = await interaction.guild.channels.create({
+        name: `🚓 ${type} | ${matricule} | ${plaque} | 1/${limit}`,
         type: ChannelType.GuildVoice,
-        parent: CATEGORY_ID
+        parent: CATEGORY_ID,
+        userLimit: limit
       });
 
-      createdVoiceChannels.set(voiceChannel.id, interaction.user.id);
+      botVoiceChannels.add(ch.id);
+      activeDispatch.set(interaction.user.id, ch.id);
 
-      await interaction.member.voice.setChannel(voiceChannel);
+      await interaction.member.voice.setChannel(ch).catch(() => {});
 
-      const nonAjoutes = [];
+      /* 🔥 AJOUT AUTO DES MEMBRES 🔥 */
+      if (membersRaw.trim()) {
+        const names = membersRaw.split(",").map(x => x.trim()).filter(Boolean);
 
-      for (const entry of membresRaw) {
-        let member = null;
+        for (const name of names) {
+          const member = findMemberByPartialName(interaction.guild, name);
+          if (!member || !member.voice?.channel) continue;
 
-        const mention = entry.match(/^<@!?(\d+)>$/);
-        if (mention) {
-          member = await interaction.guild.members.fetch(mention[1]).catch(() => null);
-        } else if (/^\d{17,20}$/.test(entry)) {
-          member = await interaction.guild.members.fetch(entry).catch(() => null);
-        } else {
-          const search = entry.toLowerCase();
-          member = interaction.guild.members.cache.find(m =>
-            m.displayName.toLowerCase() === search ||
-            m.user.username.toLowerCase() === search
-          );
-        }
+          const current = getCurrentDispatch(ch.name);
+          const next = getNextDispatch(current);
 
-        if (member && member.voice.channel) {
-          await member.voice.setChannel(voiceChannel);
-        } else if (member) {
-          nonAjoutes.push(member.displayName);
+          if (next && ch.members.size >= DISPATCH_LIMITS[current]) {
+            ch = await evolveDispatch(interaction.guild, ch, next);
+            activeDispatch.set(interaction.user.id, ch.id);
+          }
+
+          await member.voice.setChannel(ch).catch(() => {});
         }
       }
 
-      await interaction.reply({
-        content: `✅ Dispatch créé.${
-          nonAjoutes.length ? `\n⚠️ Pas en vocal : ${nonAjoutes.join(", ")}` : ""
-        }`,
-        ephemeral: true
-      });
+      await sendLog(interaction.guild,
+        `🚓 DISPATCH CRÉÉ
+Chef : ${interaction.member.displayName}
+Type : ${type}
+Matricule : ${matricule}
+Plaque : ${plaque}`
+      );
+
+      return interaction.editReply("✅ Dispatch créé");
     }
 
-  } catch (err) {
-    console.error("❌ Erreur interaction :", err);
+    /* ===== AJOUT MEMBRE ===== */
+    if (interaction.isButton() && interaction.customId === "add_member") {
+      if (interaction.member.voice?.channelId !== WAITING_VOICE_CHANNEL_ID) {
+        return interaction.reply({
+          content: "❌ Tu dois être dans le salon vocal d'attente pour utiliser cette action.",
+          flags: 64
+        });
+      }
+
+      if (!activeDispatch.has(interaction.user.id)) {
+        await interaction.reply({ content: "❌ Aucun dispatch actif", flags: 64 });
+        return;
+      }
+
+      return interaction.showModal(
+        new ModalBuilder()
+          .setCustomId("add_member_modal")
+          .setTitle("Ajouter un membre")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("member")
+                .setLabel("Pseudo partiel")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+            )
+          )
+      );
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "add_member_modal") {
+      await interaction.deferReply({ flags: 64 });
+
+      let ch = interaction.guild.channels.cache.get(activeDispatch.get(interaction.user.id));
+      if (!ch) return interaction.editReply("❌ Dispatch introuvable");
+
+      const member = findMemberByPartialName(
+        interaction.guild,
+        interaction.fields.getTextInputValue("member")
+      );
+
+      if (!member || !member.voice?.channel)
+        return interaction.editReply("❌ Membre introuvable ou pas en vocal");
+
+      const current = getCurrentDispatch(ch.name);
+      const next = getNextDispatch(current);
+
+      if (next && ch.members.size >= DISPATCH_LIMITS[current]) {
+        ch = await evolveDispatch(interaction.guild, ch, next);
+        activeDispatch.set(interaction.user.id, ch.id);
+      }
+
+      await member.voice.setChannel(ch).catch(() => {});
+      return interaction.editReply("✅ Membre ajouté");
+    }
+
+  } catch (e) {
+    console.error("❌ Erreur interaction :", e);
   }
 });
 
-/* ------------ AUTO DELETE ------------ */
+/* ================= AUTO DELETE ================= */
 
 client.on("voiceStateUpdate", async oldState => {
-
-  if (!oldState.channelId) return;
-
-  const channel = oldState.channel;
-  if (!channel) return;
-  if (!createdVoiceChannels.has(channel.id)) return;
-
-  setTimeout(async () => {
-    const fetched = await channel.guild.channels.fetch(channel.id).catch(() => null);
-    if (!fetched) return;
-
-    if (fetched.members.size === 0) {
-      await fetched.delete("Dispatch vide");
-      createdVoiceChannels.delete(channel.id);
-    }
-  }, 5000);
+  const ch = oldState.channel;
+  if (ch && botVoiceChannels.has(ch.id) && ch.members.size === 0) {
+    await sendLog(ch.guild, `🗑️ DISPATCH SUPPRIMÉ • ${ch.name}`);
+    botVoiceChannels.delete(ch.id);
+    await ch.delete().catch(() => {});
+  }
 });
 
-/* ------------ LOGIN ------------ */
-
-if (!process.env.TOKEN) {
-  console.error("❌ TOKEN manquant (.env)");
-  process.exit(1);
-}
+/* ================= LOGIN ================= */
 
 client.login(process.env.TOKEN);
