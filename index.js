@@ -92,7 +92,7 @@ client.once("clientReady", async () => {
   await channel.send({
     components: [
       row(ButtonStyle.Success, ["lincoln","adam","tango","delta"]),
-      row(ButtonStyle.Success, ["mary","victor","henry","baro"])
+      row(ButtonStyle.Success, ["mary","victor","henry","bravo"])
     ]
   });
 
@@ -100,7 +100,7 @@ client.once("clientReady", async () => {
   await channel.send({ components: [title("🛡️ DISPATCHS UNITÉS")] });
   await channel.send({
     components: [
-      row(ButtonStyle.Primary, ["swat","cid"])
+      row(ButtonStyle.Primary, ["swat","cid","k9"])
     ]
   });
 
@@ -108,8 +108,7 @@ client.once("clientReady", async () => {
   await channel.send({ components: [title("🎯 DISPATCHS SPÉCIFIQUES")] });
   await channel.send({
     components: [
-      row(ButtonStyle.Secondary, ["banalise","mainhall","bureau"]),
-      row(ButtonStyle.Secondary, ["formation","recrutement","operation"])
+      row(ButtonStyle.Secondary, ["banalise","recrutement","operation"])
     ]
   });
 
