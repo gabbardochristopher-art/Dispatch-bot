@@ -240,7 +240,7 @@ client.on("interactionCreate", async interaction => {
 
       /* 🔥 AJOUT AUTO DES MEMBRES 🔥 */
       if (membersRaw.trim()) {
-        const names = membersRaw.split(",").map(x => x.trim()).filter(Boolean);
+        const names = membersRaw.split("/").map(x => x.trim()).filter(Boolean);
 
         for (const name of names) {
           const member = findMemberByPartialName(interaction.guild, name);
