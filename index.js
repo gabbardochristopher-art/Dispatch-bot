@@ -271,16 +271,16 @@ Plaque : ${plaque}`
 
     /* ===== AJOUT MEMBRE ===== */
     if (interaction.isButton() && interaction.customId === "add_member") {
-      if (interaction.member.voice?.channelId !== WAITING_VOICE_CHANNEL_ID) {
-        return interaction.reply({
-          content: "❌ Tu dois être dans le salon vocal d'attente pour utiliser cette action.",
-          flags: 64
-        });
-      }
-
       if (!activeDispatch.has(interaction.user.id)) {
         await interaction.reply({ content: "❌ Aucun dispatch actif", flags: 64 });
         return;
+      }
+
+      if (interaction.member.voice?.channelId !== activeDispatch.get(interaction.user.id)) {
+        return interaction.reply({
+          content: "❌ Tu dois être dans le salon vocal de ton dispatch pour utiliser cette action.",
+          flags: 64
+        });
       }
 
       return interaction.showModal(
@@ -305,24 +305,101 @@ Plaque : ${plaque}`
       let ch = interaction.guild.channels.cache.get(activeDispatch.get(interaction.user.id));
       if (!ch) return interaction.editReply("❌ Dispatch introuvable");
 
-      const member = findMemberByPartialName(
-        interaction.guild,
-        interaction.fields.getTextInputValue("member")
-      );
+      const names = interaction.fields.getTextInputValue("member")
+        .split("/").map(x => x.trim()).filter(Boolean);
 
-      if (!member || !member.voice?.channel)
-        return interaction.editReply("❌ Membre introuvable ou pas en vocal");
+      const added = [];
+      const failed = [];
 
-      const current = getCurrentDispatch(ch.name);
-      const next = getNextDispatch(current);
+      for (const name of names) {
+        const member = findMemberByPartialName(interaction.guild, name);
 
-      if (next && ch.members.size >= DISPATCH_LIMITS[current]) {
-        ch = await evolveDispatch(interaction.guild, ch, next);
-        activeDispatch.set(interaction.user.id, ch.id);
+        if (!member || !member.voice?.channel) {
+          failed.push(name);
+          continue;
+        }
+
+        const current = getCurrentDispatch(ch.name);
+        const next = getNextDispatch(current);
+
+        if (next && ch.members.size >= DISPATCH_LIMITS[current]) {
+          ch = await evolveDispatch(interaction.guild, ch, next);
+          activeDispatch.set(interaction.user.id, ch.id);
+        }
+
+        await member.voice.setChannel(ch).catch(() => {});
+        added.push(member.displayName);
       }
 
-      await member.voice.setChannel(ch).catch(() => {});
-      return interaction.editReply("✅ Membre ajouté");
+      let reply = "";
+      if (added.length) reply += `✅ Ajouté(s) : ${added.join(", ")}`;
+      if (failed.length) reply += `${reply ? "\n" : ""}❌ Introuvable(s) ou pas en vocal : ${failed.join(", ")}`;
+
+      return interaction.editReply(reply || "❌ Aucun membre traité");
+    }
+
+    /* ===== RETRAIT MEMBRE ===== */
+    if (interaction.isButton() && interaction.customId === "remove_member") {
+      if (!activeDispatch.has(interaction.user.id)) {
+        await interaction.reply({ content: "❌ Aucun dispatch actif", flags: 64 });
+        return;
+      }
+
+      if (interaction.member.voice?.channelId !== activeDispatch.get(interaction.user.id)) {
+        return interaction.reply({
+          content: "❌ Tu dois être dans le salon vocal de ton dispatch pour utiliser cette action.",
+          flags: 64
+        });
+      }
+
+      return interaction.showModal(
+        new ModalBuilder()
+          .setCustomId("remove_member_modal")
+          .setTitle("Retirer un membre")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("member")
+                .setLabel("Pseudo partiel")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+            )
+          )
+      );
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "remove_member_modal") {
+      await interaction.deferReply({ flags: 64 });
+
+      const ch = interaction.guild.channels.cache.get(activeDispatch.get(interaction.user.id));
+      if (!ch) return interaction.editReply("❌ Dispatch introuvable");
+
+      const names = interaction.fields.getTextInputValue("member")
+        .split("/").map(x => x.trim().toLowerCase()).filter(Boolean);
+
+      const removed = [];
+      const failed = [];
+
+      for (const search of names) {
+        const matches = ch.members.filter(m =>
+          m.displayName.toLowerCase().includes(search)
+        );
+
+        if (matches.size !== 1) {
+          failed.push(search);
+          continue;
+        }
+
+        const member = matches.first();
+        await member.voice.setChannel(WAITING_VOICE_CHANNEL_ID).catch(() => {});
+        removed.push(member.displayName);
+      }
+
+      let reply = "";
+      if (removed.length) reply += `✅ Retiré(s) : ${removed.join(", ")}`;
+      if (failed.length) reply += `${reply ? "\n" : ""}❌ Introuvable(s) ou pas dans ce dispatch : ${failed.join(", ")}`;
+
+      return interaction.editReply(reply || "❌ Aucun membre traité");
     }
 
   } catch (e) {
