@@ -17,6 +17,7 @@ require("dotenv").config();
 const CATEGORY_ID = "1514197100064407583";
 const TEXT_CHANNEL_ID = "1514196466820845748";
 const LOG_CHANNEL_ID = "1514193783573577858";
+const PATROL_REPORT_CHANNEL_ID = "1514933694429659166";
 const WAITING_VOICE_CHANNEL_ID = "1514198634982408192";
 
 /* ========================================= */
@@ -96,7 +97,7 @@ async function sendWeeklyPatrolReport() {
     ? entries.map(e => `• **${e.name}** : ${formatDuration(e.seconds)}`).join("\n")
     : "Aucun dispatch effectué cette semaine.";
 
-  const ch = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+  const ch = await client.channels.fetch(PATROL_REPORT_CHANNEL_ID).catch(() => null);
   if (ch) await ch.send(msg).catch(() => {});
 
   patrolData = { lastSent: getParisDateString(), totals: {} };
