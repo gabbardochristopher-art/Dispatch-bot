@@ -9,6 +9,7 @@ const {
   TextInputBuilder,
   TextInputStyle
 } = require("discord.js");
+const fs = require("fs");
 require("dotenv").config();
 
 /* ================= CONFIG ================= */
@@ -33,6 +34,86 @@ const client = new Client({
 const activeDispatch = new Map(); // chefId => channelId
 const botVoiceChannels = new Set();
 const dispatchInfo = new Map(); // channelId => { plaque, createdAt, members: Set<string> }
+
+/* ================= TEMPS DE PATROUILLE ================= */
+
+const PATROL_FILE = "./patrolTime.json";
+const memberSessions = new Map(); // userId => startTimestamp (vocal de dispatch en cours)
+
+function loadPatrolData() {
+  try {
+    return JSON.parse(fs.readFileSync(PATROL_FILE, "utf8"));
+  } catch {
+    return { lastSent: null, totals: {} };
+  }
+}
+
+function savePatrolData() {
+  fs.writeFileSync(PATROL_FILE, JSON.stringify(patrolData, null, 2));
+}
+
+let patrolData = loadPatrolData();
+
+function addPatrolTime(member, seconds) {
+  if (seconds <= 0) return;
+  const entry = patrolData.totals[member.id] || { name: member.displayName, seconds: 0 };
+  entry.name = member.displayName;
+  entry.seconds += seconds;
+  patrolData.totals[member.id] = entry;
+  savePatrolData();
+}
+
+function formatDuration(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  return `${h}h ${m}min`;
+}
+
+function getParisParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Paris",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return { weekday: map.weekday, hour: parseInt(map.hour, 10), minute: parseInt(map.minute, 10) };
+}
+
+function getParisDateString(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(date);
+}
+
+async function sendWeeklyPatrolReport() {
+  const entries = Object.values(patrolData.totals)
+    .filter(e => e.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+
+  let msg = "📊 **Récap hebdomadaire des temps de patrouille**\n";
+  msg += entries.length
+    ? entries.map(e => `• **${e.name}** : ${formatDuration(e.seconds)}`).join("\n")
+    : "Aucun dispatch effectué cette semaine.";
+
+  const ch = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+  if (ch) await ch.send(msg).catch(() => {});
+
+  patrolData = { lastSent: getParisDateString(), totals: {} };
+  savePatrolData();
+}
+
+function startPatrolScheduler() {
+  setInterval(() => {
+    const { weekday, hour, minute } = getParisParts();
+    if (weekday === "Thu" && hour === 20 && minute === 0) {
+      const today = getParisDateString();
+      if (patrolData.lastSent !== today) {
+        sendWeeklyPatrolReport();
+      }
+    }
+  }, 60 * 1000);
+}
 
 /* ================= DISPATCH ================= */
 
@@ -64,6 +145,8 @@ async function sendLog(guild, msg) {
 
 client.once("clientReady", async () => {
   console.log("✅ Bot prêt");
+
+  startPatrolScheduler();
 
   const channel = await client.channels.fetch(TEXT_CHANNEL_ID);
   await channel.bulkDelete(50).catch(() => {});
@@ -427,6 +510,21 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
   if (newState.channel && botVoiceChannels.has(newState.channel.id)) {
     const info = dispatchInfo.get(newState.channel.id);
     if (info) info.members.add(newState.member.displayName);
+  }
+
+  /* ===== SUIVI DU TEMPS DE PATROUILLE ===== */
+  const member = newState.member || oldState.member;
+  const wasInDispatch = oldState.channel && botVoiceChannels.has(oldState.channel.id);
+  const isInDispatch = newState.channel && botVoiceChannels.has(newState.channel.id);
+
+  if (isInDispatch && !wasInDispatch) {
+    memberSessions.set(member.id, Date.now());
+  } else if (wasInDispatch && !isInDispatch) {
+    const start = memberSessions.get(member.id);
+    if (start) {
+      addPatrolTime(member, Math.floor((Date.now() - start) / 1000));
+      memberSessions.delete(member.id);
+    }
   }
 
   const ch = oldState.channel;
