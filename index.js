@@ -192,7 +192,7 @@ client.once("clientReady", async () => {
   await channel.send({ components: [title("🎯 DISPATCHS SPÉCIFIQUES")] });
   await channel.send({
     components: [
-      row(ButtonStyle.Secondary, ["banalise","recrutement","operation"])
+      row(ButtonStyle.Secondary, ["banalise","recrutement","operation","bureau"])
     ]
   });
 
