@@ -106,8 +106,8 @@ async function sendWeeklyPatrolReport() {
 
 function startPatrolScheduler() {
   setInterval(() => {
-    const { weekday, hour, minute } = getParisParts();
-    if (weekday === "Thu" && hour === 20 && minute === 0) {
+    const { weekday, hour } = getParisParts();
+    if (weekday === "Thu" && hour >= 20) {
       const today = getParisDateString();
       if (patrolData.lastSent !== today) {
         sendWeeklyPatrolReport();
